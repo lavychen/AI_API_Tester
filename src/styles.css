@@ -14,6 +14,7 @@
 body {
   margin: 0;
   min-width: 1080px;
+  overflow: hidden;
 }
 
 button,
@@ -32,7 +33,7 @@ button {
   cursor: pointer;
   display: inline-flex;
   gap: 8px;
-  height: 38px;
+  height: 36px;
   justify-content: center;
   padding: 0 14px;
   transition:
@@ -73,26 +74,27 @@ button.secondary:hover:not(:disabled),
   border-color: #c8d0d8;
   color: #243241;
   flex: 0 0 auto;
-  height: 34px;
+  height: 32px;
   padding: 0;
-  width: 34px;
+  width: 32px;
 }
 
 .app-shell {
   display: grid;
   grid-template-columns: 360px minmax(720px, 1fr);
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .sidebar {
   background: #e5ebef;
   border-right: 1px solid #cbd4dc;
   display: grid;
-  gap: 14px;
+  gap: 10px;
   grid-template-rows: auto auto minmax(0, 1fr);
   min-width: 0;
   overflow: hidden;
-  padding: 18px;
+  padding: 14px;
 }
 
 .brand-row {
@@ -100,7 +102,7 @@ button.secondary:hover:not(:disabled),
   color: #162330;
   display: flex;
   gap: 12px;
-  min-height: 54px;
+  min-height: 44px;
 }
 
 .brand-mark {
@@ -109,13 +111,13 @@ button.secondary:hover:not(:disabled),
   border-radius: 8px;
   color: #f4fbfb;
   display: grid;
-  height: 42px;
+  height: 38px;
   justify-items: center;
-  width: 42px;
+  width: 38px;
 }
 
 .brand-row h1 {
-  font-size: 21px;
+  font-size: 19px;
   line-height: 1.1;
   margin: 0;
 }
@@ -137,7 +139,7 @@ button.secondary:hover:not(:disabled),
 
 .panel {
   min-width: 0;
-  padding: 14px;
+  padding: 10px;
 }
 
 .panel-title {
@@ -146,17 +148,17 @@ button.secondary:hover:not(:disabled),
   font-weight: 750;
   gap: 10px;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   min-width: 0;
 }
 
 .upstream-panel {
-  min-height: 132px;
+  min-height: 112px;
 }
 
 .upstream-list {
   display: grid;
-  gap: 8px;
+  gap: 7px;
 }
 
 .upstream-item {
@@ -166,7 +168,7 @@ button.secondary:hover:not(:disabled),
   color: #253241;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  height: 44px;
+  height: 40px;
   justify-content: stretch;
   padding: 0 10px;
   text-align: left;
@@ -197,16 +199,16 @@ button.secondary:hover:not(:disabled),
 .form-panel {
   align-content: start;
   display: grid;
-  gap: 11px;
+  gap: 7px;
   min-height: 0;
-  overflow-y: auto;
+  overflow-y: hidden;
 }
 
 label {
   color: #526170;
   display: grid;
   gap: 5px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 680;
 }
 
@@ -217,10 +219,10 @@ textarea {
   border: 1px solid #c7d0d8;
   border-radius: 6px;
   color: #17212b;
-  min-height: 36px;
+  min-height: 31px;
   min-width: 0;
   outline: none;
-  padding: 8px 10px;
+  padding: 5px 9px;
   width: 100%;
 }
 
@@ -238,7 +240,7 @@ textarea:focus {
   display: grid;
   gap: 4px;
   grid-template-columns: repeat(3, 1fr);
-  padding: 4px;
+  padding: 3px;
 }
 
 .segment,
@@ -246,7 +248,7 @@ textarea:focus {
   background: transparent;
   border-color: transparent;
   color: #526170;
-  height: 32px;
+  height: 30px;
   min-width: 0;
   padding: 0 8px;
 }
@@ -261,30 +263,33 @@ textarea:focus {
 
 .input-with-button {
   display: grid;
-  gap: 8px;
-  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 7px;
+  grid-template-columns: minmax(0, 1fr) 32px;
 }
 
 .split-fields {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .check-row {
   align-items: center;
-  display: flex;
+  display: inline-flex;
   flex-direction: row;
   gap: 8px;
+  justify-content: flex-start;
+  white-space: nowrap;
 }
 
 .check-row input {
   min-height: auto;
+  width: auto;
 }
 
 .action-row {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   justify-content: flex-end;
   padding-top: 2px;
 }
@@ -295,24 +300,26 @@ textarea:focus {
 
 .workspace {
   display: grid;
-  gap: 14px;
-  grid-template-rows: auto auto minmax(250px, 0.92fr) minmax(280px, 1.08fr);
-  min-height: 100vh;
-  padding: 18px;
+  gap: 12px;
+  grid-template-rows: auto auto minmax(176px, 0.74fr) minmax(220px, 1.26fr);
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+  padding: 16px;
 }
 
 .topbar {
   align-items: center;
   display: flex;
   justify-content: space-between;
-  min-height: 78px;
-  padding: 14px 16px;
+  min-height: 66px;
+  padding: 10px 14px;
 }
 
 .topbar h2 {
-  font-size: 22px;
+  font-size: 21px;
   line-height: 1.1;
-  margin: 8px 0 0;
+  margin: 6px 0 0;
 }
 
 .status-pill {
@@ -356,12 +363,18 @@ textarea:focus {
   display: grid;
   gap: 12px;
   grid-template-columns: minmax(320px, 1fr) auto auto;
-  padding: 12px;
+  padding: 10px 12px;
 }
 
 .model-control {
   display: grid;
   gap: 5px;
+}
+
+.model-picker {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 180px;
 }
 
 .primary-action {
@@ -371,7 +384,7 @@ textarea:focus {
 .prompt-grid,
 .result-grid {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.85fr);
   min-height: 0;
 }
@@ -381,7 +394,7 @@ textarea:focus {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
-  padding: 14px;
+  padding: 12px;
 }
 
 .editor-panel .panel-title select {

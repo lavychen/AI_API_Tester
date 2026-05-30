@@ -13,10 +13,10 @@
     "windows": [
       {
         "title": "AI API Tester",
-        "width": 1440,
-        "height": 900,
+        "width": 1320,
+        "height": 760,
         "minWidth": 1080,
-        "minHeight": 720
+        "minHeight": 680
       }
     ],
     "security": {

@@ -25,7 +25,7 @@ const DEFAULT_USER_AGENT =
 const TYPE_LABELS: Record<UpstreamType, string> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
-  newapi: "NewAPI",
+  newapi: "Gateway",
 };
 
 const blankUpstream = (type: UpstreamType = "openai"): Upstream => ({
@@ -248,7 +248,7 @@ export default function App() {
           </div>
           <div>
             <h1>AI API Tester</h1>
-            <p>Tauri desktop client</p>
+            <p>多上游模型测试台</p>
           </div>
         </div>
 
@@ -354,7 +354,7 @@ export default function App() {
               checked={draft.no_proxy}
               onChange={(event) => updateDraft("no_proxy", event.target.checked)}
             />
-            直连，不使用代理
+            <span>直连，不使用代理</span>
           </label>
           <div className="action-row">
             <button className="secondary danger" onClick={deleteUpstream} title="删除当前上游">
@@ -394,17 +394,24 @@ export default function App() {
         <div className="command-bar">
           <label className="model-control">
             模型
-            <input
-              list="model-options"
-              value={model}
-              placeholder="选择或输入模型 ID"
-              onChange={(event) => setModel(event.target.value)}
-            />
-            <datalist id="model-options">
-              {models.map((item) => (
-                <option value={item} key={item} />
-              ))}
-            </datalist>
+            <div className="model-picker">
+              <input value={model} placeholder="输入模型 ID" onChange={(event) => setModel(event.target.value)} />
+              <select
+                value=""
+                onChange={(event) => {
+                  if (event.target.value) {
+                    setModel(event.target.value);
+                  }
+                }}
+              >
+                <option value="">选择模型</option>
+                {models.map((item) => (
+                  <option value={item} key={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </div>
           </label>
           <button className="secondary" onClick={refreshModels} disabled={busy === "models"}>
             {busy === "models" ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
