@@ -207,3 +207,7 @@ pyinstaller --noconsole --onefile --add-data "assets;assets" api_tester_pyside6.
 - 不要提交 `Data/history/`。
 - 不要提交真实 API Key、代理凭据或内部网关地址。
 - 如果误提交过 API Key，请立即到服务商后台轮换密钥。
+
+## 开源协议
+
+本项目基于 [MIT License](LICENSE) 开源。
