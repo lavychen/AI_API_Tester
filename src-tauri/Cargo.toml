@@ -1,0 +1,17 @@
+[package]
+name = "ai-api-tester"
+version = "0.2.0"
+description = "AI API Tester desktop client"
+authors = ["AI API Tester"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2.2", features = [] }
+
+[dependencies]
+anyhow = "1.0"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tauri = { version = "2.5", features = [] }
+tokio = { version = "1.41", features = ["time"] }

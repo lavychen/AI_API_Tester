@@ -9,6 +9,11 @@ build/
 dist/
 *.spec
 
+# Node/Tauri output
+node_modules/
+src-tauri/gen/
+src-tauri/target/
+
 # Virtual environments
 .venv/
 venv/
