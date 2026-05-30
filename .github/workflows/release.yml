@@ -1,0 +1,69 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Build Windows portable package
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Tauri executable
+        run: npm run tauri -- build --no-bundle
+
+      - name: Prepare portable zip
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}"
+          $packageDir = "release\AI_API_Tester-$version-windows-portable"
+          New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
+          Copy-Item "src-tauri\target\release\ai-api-tester.exe" "$packageDir\AI_API_Tester.exe"
+          @(
+            "AI API Tester $version"
+            ""
+            "This is a portable Windows build."
+            ""
+            "Run:"
+            "- Double-click AI_API_Tester.exe"
+            ""
+            "Requirement:"
+            "- Microsoft Edge WebView2 Runtime is required. It is already included on most Windows 10/11 systems."
+            ""
+            "Notes:"
+            "- Connection and prompt-template settings are saved locally by the app."
+            "- If the app cannot open on another computer, install WebView2 Runtime first."
+          ) | Set-Content -Encoding UTF8 "$packageDir\README.txt"
+          Compress-Archive -Path "$packageDir\*" -DestinationPath "release\AI_API_Tester-$version-windows-portable.zip" -Force
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: AI API Tester ${{ github.ref_name }}
+          body: |
+            Windows portable build for AI API Tester.
+
+            Download the zip asset, extract it, and run `AI_API_Tester.exe`.
+
+            Microsoft Edge WebView2 Runtime is required on the target machine.
+          files: release/AI_API_Tester-${{ github.ref_name }}-windows-portable.zip
