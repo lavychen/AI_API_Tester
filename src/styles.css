@@ -358,8 +358,8 @@ textarea:focus {
 .command-bar {
   align-items: end;
   display: grid;
-  gap: 12px;
-  grid-template-columns: minmax(320px, 1fr) auto auto;
+  gap: 9px;
+  grid-template-columns: minmax(260px, 0.9fr) auto auto 82px 118px auto auto;
   padding: 10px 12px;
 }
 
@@ -371,11 +371,39 @@ textarea:focus {
 .model-picker {
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(0, 1fr) 180px;
+  grid-template-columns: minmax(0, 1fr) 150px;
 }
 
 .primary-action {
-  min-width: 118px;
+  min-width: 82px;
+}
+
+.inline-check {
+  align-items: center;
+  display: inline-flex;
+  flex-direction: row;
+  gap: 6px;
+  height: 31px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.inline-check input {
+  min-height: auto;
+  width: auto;
+}
+
+.param-control {
+  display: grid;
+  gap: 5px;
+}
+
+.param-control input {
+  text-align: right;
+}
+
+.token-control {
+  min-width: 112px;
 }
 
 .prompt-grid,

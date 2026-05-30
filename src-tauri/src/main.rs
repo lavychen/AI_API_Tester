@@ -200,13 +200,116 @@ fn response_meta(value: &Value) -> Value {
     })
 }
 
+fn stream_meta(model: Option<String>, usage: Option<Value>, stop_reason: Option<String>) -> Value {
+    json!({
+        "model": model.unwrap_or_default(),
+        "usage": usage.unwrap_or(Value::Null),
+        "stop_reason": stop_reason.unwrap_or_default(),
+        "finish_reason": Value::Null
+    })
+}
+
+fn parse_stream_response(text: &str, upstream: &Upstream) -> (String, Value) {
+    let mut output = String::new();
+    let mut model = None;
+    let mut usage = None;
+    let mut stop_reason = None;
+
+    for line in text.lines() {
+        let line = line.trim();
+        if !line.starts_with("data:") {
+            continue;
+        }
+        let data = line.trim_start_matches("data:").trim();
+        if data.is_empty() || data == "[DONE]" {
+            continue;
+        }
+        let Ok(value) = serde_json::from_str::<Value>(data) else {
+            continue;
+        };
+        if model.is_none() {
+            model = value
+                .get("model")
+                .and_then(Value::as_str)
+                .map(ToString::to_string);
+        }
+        if let Some(item_usage) = value.get("usage") {
+            if !item_usage.is_null() {
+                usage = Some(item_usage.clone());
+            }
+        }
+
+        if upstream.upstream_type == "anthropic" || upstream.chat_path == "/v1/messages" {
+            match value.get("type").and_then(Value::as_str) {
+                Some("message_start") => {
+                    if let Some(message) = value.get("message") {
+                        model = model.or_else(|| {
+                            message
+                                .get("model")
+                                .and_then(Value::as_str)
+                                .map(ToString::to_string)
+                        });
+                        if let Some(item_usage) = message.get("usage") {
+                            usage = Some(item_usage.clone());
+                        }
+                    }
+                }
+                Some("content_block_delta") => {
+                    if let Some(text) = value
+                        .get("delta")
+                        .and_then(|delta| delta.get("text"))
+                        .and_then(Value::as_str)
+                    {
+                        output.push_str(text);
+                    }
+                }
+                Some("message_delta") => {
+                    if let Some(delta) = value.get("delta") {
+                        stop_reason = delta
+                            .get("stop_reason")
+                            .and_then(Value::as_str)
+                            .map(ToString::to_string)
+                            .or(stop_reason);
+                    }
+                    if let Some(item_usage) = value.get("usage") {
+                        usage = Some(item_usage.clone());
+                    }
+                }
+                _ => {}
+            }
+            continue;
+        }
+
+        if let Some(choice) = value
+            .get("choices")
+            .and_then(Value::as_array)
+            .and_then(|choices| choices.first())
+        {
+            if let Some(content) = choice
+                .get("delta")
+                .and_then(|delta| delta.get("content"))
+                .and_then(Value::as_str)
+            {
+                output.push_str(content);
+            }
+            stop_reason = choice
+                .get("finish_reason")
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+                .or(stop_reason);
+        }
+    }
+
+    (output, stream_meta(model, usage, stop_reason))
+}
+
 fn completion_body(payload: &CompletionPayload) -> Value {
     let upstream = &payload.upstream;
     if upstream.upstream_type == "anthropic" || upstream.chat_path == "/v1/messages" {
         let mut body = json!({
             "model": payload.model,
             "max_tokens": upstream.max_tokens,
-            "stream": false,
+            "stream": upstream.stream,
             "messages": [{ "role": "user", "content": payload.prompt }]
         });
         if !payload.system_prompt.trim().is_empty() {
@@ -226,7 +329,7 @@ fn completion_body(payload: &CompletionPayload) -> Value {
     let mut body = json!({
         "model": payload.model,
         "max_tokens": upstream.max_tokens,
-        "stream": false,
+        "stream": upstream.stream,
         "messages": messages
     });
     if upstream.send_temperature {
@@ -286,6 +389,14 @@ async fn complete(payload: CompletionPayload) -> Result<ApiResult, String> {
     let text = response.text().await.map_err(|error| error.to_string())?;
     if !status.is_success() {
         return Err(format!("HTTP {}: {}", status.as_u16(), text));
+    }
+    if upstream.stream {
+        let (stream_text, meta) = parse_stream_response(&text, upstream);
+        return Ok(ApiResult {
+            text: stream_text,
+            meta,
+            elapsed: started.elapsed().as_secs_f64(),
+        });
     }
     let value = serde_json::from_str::<Value>(&text).map_err(|error| error.to_string())?;
     Ok(ApiResult {

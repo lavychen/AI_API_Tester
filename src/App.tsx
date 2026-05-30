@@ -207,6 +207,10 @@ export default function App() {
     });
   }
 
+  function updateRequestSetting<K extends keyof Upstream>(key: K, value: Upstream[K]) {
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
+
   async function saveConnectionDialog() {
     if (!connectionDialog) return;
     const name = connectionDialog.name.trim();
@@ -467,13 +471,49 @@ export default function App() {
               </select>
             </div>
           </label>
+          <label className="inline-check">
+            <input
+              type="checkbox"
+              checked={draft.stream}
+              onChange={(event) => updateRequestSetting("stream", event.target.checked)}
+            />
+            流式
+          </label>
+          <label className="inline-check">
+            <input
+              type="checkbox"
+              checked={!!draft.send_temperature}
+              onChange={(event) => updateRequestSetting("send_temperature", event.target.checked)}
+            />
+            发送 Temp
+          </label>
+          <label className="param-control">
+            Temp
+            <input
+              type="number"
+              min={0}
+              max={2}
+              step={0.1}
+              value={draft.temperature}
+              onChange={(event) => updateRequestSetting("temperature", Number(event.target.value))}
+            />
+          </label>
+          <label className="param-control token-control">
+            Max Tokens
+            <input
+              type="number"
+              min={1}
+              value={draft.max_tokens}
+              onChange={(event) => updateRequestSetting("max_tokens", Number(event.target.value))}
+            />
+          </label>
           <button className="secondary" onClick={refreshModels} disabled={busy === "models"}>
             {busy === "models" ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
             刷新模型
           </button>
           <button className="primary-action" onClick={sendPrompt} disabled={busy === "send"}>
             {busy === "send" ? <Loader2 className="spin" size={16} /> : <Send size={16} />}
-            开始测试
+            测试
           </button>
         </div>
 
