@@ -91,7 +91,7 @@ button.secondary:hover:not(:disabled),
   border-right: 1px solid #cbd4dc;
   display: grid;
   gap: 10px;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   overflow: hidden;
   padding: 14px;
@@ -152,8 +152,13 @@ button.secondary:hover:not(:disabled),
   min-width: 0;
 }
 
+.panel-actions {
+  display: flex;
+  gap: 6px;
+}
+
 .upstream-panel {
-  min-height: 112px;
+  min-height: 0;
 }
 
 .upstream-list {
@@ -194,13 +199,6 @@ button.secondary:hover:not(:disabled),
   display: inline-flex;
   font-size: 12px;
   gap: 6px;
-}
-
-.connection-summary {
-  align-content: start;
-  display: grid;
-  gap: 12px;
-  min-height: 0;
 }
 
 label {
@@ -297,41 +295,10 @@ textarea:focus {
   color: #8e2f32;
 }
 
-.wide-action {
-  width: 100%;
-}
-
-.summary-list {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-}
-
-.summary-list div {
-  display: grid;
-  gap: 2px;
-}
-
-.summary-list dt {
-  color: #6a7785;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.summary-list dd {
-  color: #17212b;
-  font-size: 13px;
-  font-weight: 650;
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .workspace {
   display: grid;
   gap: 12px;
-  grid-template-rows: auto auto minmax(176px, 0.74fr) minmax(220px, 1.26fr);
+  grid-template-rows: auto auto minmax(170px, 0.72fr) minmax(210px, 1.28fr) auto;
   height: 100vh;
   min-height: 0;
   overflow: hidden;
@@ -454,6 +421,47 @@ pre {
 
 .diagnostics pre {
   color: #344354;
+}
+
+.connection-statusbar {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #d6dee5;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(220px, 1.4fr) minmax(110px, 0.8fr) minmax(160px, 0.9fr) auto;
+  min-height: 40px;
+  padding: 6px 8px;
+}
+
+.connection-chip {
+  align-items: center;
+  background: #f7f9fb;
+  border: 1px solid #dbe2e8;
+  border-radius: 6px;
+  color: #526170;
+  display: inline-flex;
+  gap: 7px;
+  height: 28px;
+  min-width: 0;
+  padding: 0 9px;
+}
+
+.connection-chip span {
+  color: #263241;
+  font-size: 12px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.type-chip {
+  color: #17363d;
+  justify-content: center;
+  padding: 0;
+  width: 34px;
 }
 
 .spin {

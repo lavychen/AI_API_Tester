@@ -2,6 +2,7 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import {
   Bot,
   Check,
+  Cloud,
   Copy,
   Database,
   Eye,
@@ -9,13 +10,17 @@ import {
   Gauge,
   KeyRound,
   Loader2,
+  MessageSquare,
   Pencil,
   Plus,
   RefreshCw,
+  Route,
   Save,
   Send,
   Settings2,
   Trash2,
+  Wifi,
+  WifiOff,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -101,6 +106,16 @@ function formatMeta(meta: Record<string, unknown>, elapsed?: number): string {
 
 function cloneConfig(config: AppConfig): AppConfig {
   return JSON.parse(JSON.stringify(config)) as AppConfig;
+}
+
+function TypeIcon({ type }: { type: UpstreamType }) {
+  if (type === "anthropic") {
+    return <Bot size={16} />;
+  }
+  if (type === "newapi") {
+    return <Cloud size={16} />;
+  }
+  return <Database size={16} />;
 }
 
 export default function App() {
@@ -306,9 +321,14 @@ export default function App() {
         <section className="panel upstream-panel">
           <div className="panel-title">
             <span>上游</span>
-            <button className="icon-button" onClick={openNewUpstream} title="新建上游">
-              <Plus size={18} />
-            </button>
+            <div className="panel-actions">
+              <button className="icon-button" onClick={openNewUpstream} title="新建上游">
+                <Plus size={18} />
+              </button>
+              <button className="icon-button" onClick={openEditUpstream} title="编辑选中上游">
+                <Pencil size={16} />
+              </button>
+            </div>
           </div>
           <div className="upstream-list">
             {upstreamNames.map((name) => (
@@ -325,41 +345,6 @@ export default function App() {
               </button>
             ))}
           </div>
-        </section>
-
-        <section className="panel connection-summary">
-          <div className="panel-title">
-            <span>当前连接</span>
-            <button className="icon-button" onClick={openEditUpstream} title="编辑连接">
-              <Pencil size={16} />
-            </button>
-          </div>
-          <dl className="summary-list">
-            <div>
-              <dt>类型</dt>
-              <dd>{TYPE_LABELS[draft.type]}</dd>
-            </div>
-            <div>
-              <dt>Base URL</dt>
-              <dd>{draft.base_url || "-"}</dd>
-            </div>
-            <div>
-              <dt>模型路径</dt>
-              <dd>{draft.models_path}</dd>
-            </div>
-            <div>
-              <dt>聊天路径</dt>
-              <dd>{draft.chat_path}</dd>
-            </div>
-            <div>
-              <dt>代理</dt>
-              <dd>{draft.no_proxy ? "直连" : "系统代理"}</dd>
-            </div>
-          </dl>
-          <button className="secondary wide-action" onClick={openEditUpstream}>
-            <Settings2 size={16} />
-            编辑连接
-          </button>
         </section>
       </aside>
 
@@ -462,6 +447,28 @@ export default function App() {
             <pre>{diagnostics || status}</pre>
           </section>
         </div>
+
+        <footer className="connection-statusbar" aria-label="当前连接信息">
+          <div className="connection-chip type-chip" title={TYPE_LABELS[draft.type]}>
+            <TypeIcon type={draft.type} />
+          </div>
+          <div className="connection-chip" title={draft.base_url || "未设置 Base URL"}>
+            <Cloud size={15} />
+            <span>{draft.base_url || "-"}</span>
+          </div>
+          <div className="connection-chip" title={`模型路径：${draft.models_path}`}>
+            <Route size={15} />
+            <span>{draft.models_path}</span>
+          </div>
+          <div className="connection-chip" title={`聊天路径：${draft.chat_path}`}>
+            <MessageSquare size={15} />
+            <span>{draft.chat_path}</span>
+          </div>
+          <div className="connection-chip" title={draft.no_proxy ? "直连，不使用代理" : "使用系统代理"}>
+            {draft.no_proxy ? <WifiOff size={15} /> : <Wifi size={15} />}
+            <span>{draft.no_proxy ? "直连" : "系统代理"}</span>
+          </div>
+        </footer>
       </section>
 
       {dialog ? (
