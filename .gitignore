@@ -13,6 +13,7 @@ dist/
 .venv/
 venv/
 env/
+.tools/
 
 # Local secrets and runtime data
 api_tester_config.json
