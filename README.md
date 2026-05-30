@@ -144,33 +144,3 @@ pyinstaller --noconsole --onefile --add-data "assets:assets" api_tester_pyside6.
 
 打包产物位于 `dist/`。首次运行前请将 `api_tester_config.example.json` 复制为 `api_tester_config.json`，并放在程序同目录或源码目录中使用。
 
-## GitHub 发布流程
-
-初始化仓库并提交：
-
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-```
-
-关联 GitHub 空仓库并推送：
-
-```bash
-git branch -M main
-git remote add origin https://github.com/<your-name>/<repo-name>.git
-git push -u origin main
-```
-
-如果使用 SSH：
-
-```bash
-git remote add origin git@github.com:<your-name>/<repo-name>.git
-git push -u origin main
-```
-
-## 安全说明
-
-- 不要提交 `api_tester_config.json`
-- 不要提交 `Data/history/`
-- 如果误提交过 API Key，请立即在服务商后台轮换密钥
