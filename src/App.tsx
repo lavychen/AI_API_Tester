@@ -17,7 +17,6 @@ import {
   Route,
   Save,
   Send,
-  Settings2,
   Trash2,
   Wifi,
   WifiOff,
@@ -35,11 +34,25 @@ const TYPE_LABELS: Record<UpstreamType, string> = {
   newapi: "Gateway",
 };
 
+const DEFAULT_TEMPLATES: Record<string, string> = {
+  smoke: "Reply with: API test OK",
+  identity: "你是哪个模型，运行在什么环境中？",
+  json: "请只返回 JSON，不要包含 Markdown。",
+  code: "请写一个 Python 函数，并给出简短测试。",
+};
+
 type ConnectionDialog = {
   mode: "new" | "edit";
   name: string;
   originalName?: string;
   upstream: Upstream;
+};
+
+type TemplateDialog = {
+  mode: "new" | "edit";
+  name: string;
+  originalName?: string;
+  content: string;
 };
 
 const blankUpstream = (type: UpstreamType = "openai"): Upstream => ({
@@ -60,11 +73,7 @@ const blankUpstream = (type: UpstreamType = "openai"): Upstream => ({
 const fallbackConfig: AppConfig = {
   default_upstream: "demo-openai",
   upstreams: { "demo-openai": blankUpstream("openai") },
-  templates: {
-    smoke: "Reply with: API test OK",
-    json: "请只返回 JSON，不要包含 Markdown。",
-    code: "请写一个 Python 函数，并给出简短测试。",
-  },
+  templates: DEFAULT_TEMPLATES,
 };
 
 declare global {
@@ -87,6 +96,10 @@ function asError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function cloneConfig(config: AppConfig): AppConfig {
+  return JSON.parse(JSON.stringify(config)) as AppConfig;
+}
+
 function formatMeta(meta: Record<string, unknown>, elapsed?: number): string {
   const usage = (meta.usage ?? {}) as Record<string, unknown>;
   const input = usage.input_tokens ?? usage.prompt_tokens ?? "-";
@@ -104,17 +117,9 @@ function formatMeta(meta: Record<string, unknown>, elapsed?: number): string {
   ].join("\n");
 }
 
-function cloneConfig(config: AppConfig): AppConfig {
-  return JSON.parse(JSON.stringify(config)) as AppConfig;
-}
-
 function TypeIcon({ type }: { type: UpstreamType }) {
-  if (type === "anthropic") {
-    return <Bot size={16} />;
-  }
-  if (type === "newapi") {
-    return <Cloud size={16} />;
-  }
+  if (type === "anthropic") return <Bot size={16} />;
+  if (type === "newapi") return <Cloud size={16} />;
   return <Database size={16} />;
 }
 
@@ -131,7 +136,9 @@ export default function App() {
   const [status, setStatus] = useState("就绪");
   const [busy, setBusy] = useState<"models" | "send" | "save" | null>(null);
   const [showKey, setShowKey] = useState(false);
-  const [dialog, setDialog] = useState<ConnectionDialog | null>(null);
+  const [connectionDialog, setConnectionDialog] = useState<ConnectionDialog | null>(null);
+  const [templateDialog, setTemplateDialog] = useState<TemplateDialog | null>(null);
+  const [currentTemplateName, setCurrentTemplateName] = useState("");
 
   const upstreamNames = useMemo(() => Object.keys(config.upstreams), [config.upstreams]);
   const templates = useMemo(() => Object.entries(config.templates ?? {}), [config.templates]);
@@ -141,6 +148,7 @@ export default function App() {
     invokeCommand<AppConfig>("load_config")
       .then((loaded) => {
         const next = loaded.upstreams && Object.keys(loaded.upstreams).length ? loaded : fallbackConfig;
+        next.templates = { ...DEFAULT_TEMPLATES, ...(next.templates ?? {}) };
         const name = next.default_upstream || Object.keys(next.upstreams)[0];
         setConfig(next);
         setSelected(name);
@@ -174,12 +182,12 @@ export default function App() {
 
   function openNewUpstream() {
     setShowKey(false);
-    setDialog({ mode: "new", name: nextUpstreamName(), upstream: blankUpstream("openai") });
+    setConnectionDialog({ mode: "new", name: nextUpstreamName(), upstream: blankUpstream("openai") });
   }
 
   function openEditUpstream() {
     setShowKey(false);
-    setDialog({
+    setConnectionDialog({
       mode: "edit",
       name: selected,
       originalName: selected,
@@ -188,7 +196,7 @@ export default function App() {
   }
 
   function updateDialogUpstream<K extends keyof Upstream>(key: K, value: Upstream[K]) {
-    setDialog((current) => {
+    setConnectionDialog((current) => {
       if (!current) return current;
       const upstream = { ...current.upstream, [key]: value };
       if (key === "type") {
@@ -199,14 +207,14 @@ export default function App() {
     });
   }
 
-  async function saveDialog() {
-    if (!dialog) return;
-    const name = dialog.name.trim();
+  async function saveConnectionDialog() {
+    if (!connectionDialog) return;
+    const name = connectionDialog.name.trim();
     if (!name) {
       setStatus("请输入上游名称");
       return;
     }
-    if (name !== dialog.originalName && config.upstreams[name]) {
+    if (name !== connectionDialog.originalName && config.upstreams[name]) {
       setStatus(`上游 ${name} 已存在`);
       return;
     }
@@ -214,18 +222,18 @@ export default function App() {
     setBusy("save");
     try {
       const next = cloneConfig(config);
-      if (dialog.originalName && dialog.originalName !== name) {
-        delete next.upstreams[dialog.originalName];
+      if (connectionDialog.originalName && connectionDialog.originalName !== name) {
+        delete next.upstreams[connectionDialog.originalName];
       }
-      next.upstreams[name] = dialog.upstream;
+      next.upstreams[name] = connectionDialog.upstream;
       next.default_upstream = name;
       await invokeCommand("save_config", { config: next });
       setConfig(next);
       setSelected(name);
-      setDraft(dialog.upstream);
-      setModel(dialog.upstream.default_model);
+      setDraft(connectionDialog.upstream);
+      setModel(connectionDialog.upstream.default_model);
       setModels([]);
-      setDialog(null);
+      setConnectionDialog(null);
       setStatus("连接配置已保存");
     } catch (error) {
       setStatus(`保存失败：${asError(error)}`);
@@ -235,7 +243,7 @@ export default function App() {
   }
 
   async function deleteSelectedUpstream() {
-    if (!dialog?.originalName) return;
+    if (!connectionDialog?.originalName) return;
     if (upstreamNames.length <= 1) {
       setStatus("至少保留一个上游配置");
       return;
@@ -243,7 +251,7 @@ export default function App() {
     setBusy("save");
     try {
       const next = cloneConfig(config);
-      delete next.upstreams[dialog.originalName];
+      delete next.upstreams[connectionDialog.originalName];
       const name = Object.keys(next.upstreams)[0];
       next.default_upstream = name;
       await invokeCommand("save_config", { config: next });
@@ -252,10 +260,79 @@ export default function App() {
       setDraft(next.upstreams[name]);
       setModel(next.upstreams[name].default_model);
       setModels([]);
-      setDialog(null);
+      setConnectionDialog(null);
       setStatus("连接配置已删除");
     } catch (error) {
       setStatus(`删除失败：${asError(error)}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function openNewTemplate() {
+    setTemplateDialog({ mode: "new", name: "new-template", content: "" });
+  }
+
+  function openEditTemplate() {
+    if (!currentTemplateName) {
+      setStatus("请先选择一个模板");
+      return;
+    }
+    setTemplateDialog({
+      mode: "edit",
+      name: currentTemplateName,
+      originalName: currentTemplateName,
+      content: config.templates[currentTemplateName] ?? "",
+    });
+  }
+
+  async function saveTemplateDialog() {
+    if (!templateDialog) return;
+    const name = templateDialog.name.trim();
+    if (!name) {
+      setStatus("请输入模板名称");
+      return;
+    }
+    if (name !== templateDialog.originalName && config.templates?.[name]) {
+      setStatus(`模板 ${name} 已存在`);
+      return;
+    }
+
+    setBusy("save");
+    try {
+      const next = cloneConfig(config);
+      next.templates = { ...(next.templates ?? {}) };
+      if (templateDialog.originalName && templateDialog.originalName !== name) {
+        delete next.templates[templateDialog.originalName];
+      }
+      next.templates[name] = templateDialog.content;
+      await invokeCommand("save_config", { config: next });
+      setConfig(next);
+      setCurrentTemplateName(name);
+      setPrompt(templateDialog.content);
+      setTemplateDialog(null);
+      setStatus("提示词模板已保存");
+    } catch (error) {
+      setStatus(`保存模板失败：${asError(error)}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function deleteTemplate() {
+    if (!templateDialog?.originalName) return;
+    setBusy("save");
+    try {
+      const next = cloneConfig(config);
+      next.templates = { ...(next.templates ?? {}) };
+      delete next.templates[templateDialog.originalName];
+      await invokeCommand("save_config", { config: next });
+      setConfig(next);
+      setCurrentTemplateName("");
+      setTemplateDialog(null);
+      setStatus("提示词模板已删除");
+    } catch (error) {
+      setStatus(`删除模板失败：${asError(error)}`);
     } finally {
       setBusy(null);
     }
@@ -378,9 +455,7 @@ export default function App() {
               <select
                 value=""
                 onChange={(event) => {
-                  if (event.target.value) {
-                    setModel(event.target.value);
-                  }
+                  if (event.target.value) setModel(event.target.value);
                 }}
               >
                 <option value="">选择模型</option>
@@ -406,16 +481,42 @@ export default function App() {
           <section className="editor-panel">
             <div className="panel-title">
               <span>Prompt</span>
-              <select onChange={(event) => event.target.value && setPrompt(event.target.value)} value="">
-                <option value="">模板</option>
-                {templates.map(([name, value]) => (
-                  <option value={value} key={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
+              <div className="template-tools">
+                <select
+                  onChange={(event) => {
+                    const name = event.target.value;
+                    setCurrentTemplateName(name);
+                    if (name) setPrompt(config.templates[name] ?? "");
+                  }}
+                  value={currentTemplateName}
+                >
+                  <option value="">模板</option>
+                  {templates.map(([name]) => (
+                    <option value={name} key={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+                <button className="icon-button" onClick={openNewTemplate} title="新增模板">
+                  <Plus size={16} />
+                </button>
+                <button
+                  className="icon-button"
+                  onClick={openEditTemplate}
+                  title="编辑当前模板"
+                  disabled={!currentTemplateName}
+                >
+                  <Pencil size={15} />
+                </button>
+              </div>
             </div>
-            <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} />
+            <textarea
+              value={prompt}
+              onChange={(event) => {
+                setPrompt(event.target.value);
+                setCurrentTemplateName("");
+              }}
+            />
           </section>
           <section className="editor-panel">
             <div className="panel-title">
@@ -471,15 +572,17 @@ export default function App() {
         </footer>
       </section>
 
-      {dialog ? (
+      {connectionDialog ? (
         <div className="modal-overlay" role="presentation">
           <section className="modal" role="dialog" aria-modal="true" aria-labelledby="connection-dialog-title">
             <header className="modal-header">
               <div>
-                <div className="status-pill">{dialog.mode === "new" ? "新建" : "编辑"}</div>
-                <h3 id="connection-dialog-title">{dialog.mode === "new" ? "新建上游连接" : "编辑上游连接"}</h3>
+                <div className="status-pill">{connectionDialog.mode === "new" ? "新建" : "编辑"}</div>
+                <h3 id="connection-dialog-title">
+                  {connectionDialog.mode === "new" ? "新建上游连接" : "编辑上游连接"}
+                </h3>
               </div>
-              <button className="icon-button" onClick={() => setDialog(null)} title="关闭">
+              <button className="icon-button" onClick={() => setConnectionDialog(null)} title="关闭">
                 <X size={17} />
               </button>
             </header>
@@ -488,15 +591,19 @@ export default function App() {
               <label>
                 上游名称
                 <input
-                  value={dialog.name}
-                  onChange={(event) => setDialog((current) => (current ? { ...current, name: event.target.value } : current))}
+                  value={connectionDialog.name}
+                  onChange={(event) =>
+                    setConnectionDialog((current) =>
+                      current ? { ...current, name: event.target.value } : current,
+                    )
+                  }
                 />
               </label>
 
               <div className="segmented dialog-segmented" aria-label="上游类型">
                 {(Object.keys(TYPE_LABELS) as UpstreamType[]).map((type) => (
                   <button
-                    className={dialog.upstream.type === type ? "segment active" : "segment"}
+                    className={connectionDialog.upstream.type === type ? "segment active" : "segment"}
                     key={type}
                     onClick={() => updateDialogUpstream("type", type)}
                     type="button"
@@ -509,7 +616,7 @@ export default function App() {
               <label className="span-2">
                 Base URL
                 <input
-                  value={dialog.upstream.base_url}
+                  value={connectionDialog.upstream.base_url}
                   onChange={(event) => updateDialogUpstream("base_url", event.target.value)}
                 />
               </label>
@@ -519,7 +626,7 @@ export default function App() {
                 <div className="input-with-button">
                   <input
                     type={showKey ? "text" : "password"}
-                    value={dialog.upstream.api_key}
+                    value={connectionDialog.upstream.api_key}
                     onChange={(event) => updateDialogUpstream("api_key", event.target.value)}
                   />
                   <button className="icon-button" onClick={() => setShowKey((value) => !value)} title="显示或隐藏密钥">
@@ -531,21 +638,21 @@ export default function App() {
               <label>
                 模型路径
                 <input
-                  value={dialog.upstream.models_path}
+                  value={connectionDialog.upstream.models_path}
                   onChange={(event) => updateDialogUpstream("models_path", event.target.value)}
                 />
               </label>
               <label>
                 聊天路径
                 <input
-                  value={dialog.upstream.chat_path}
+                  value={connectionDialog.upstream.chat_path}
                   onChange={(event) => updateDialogUpstream("chat_path", event.target.value)}
                 />
               </label>
               <label>
                 默认模型
                 <input
-                  value={dialog.upstream.default_model}
+                  value={connectionDialog.upstream.default_model}
                   onChange={(event) => updateDialogUpstream("default_model", event.target.value)}
                 />
               </label>
@@ -554,7 +661,7 @@ export default function App() {
                 <input
                   type="number"
                   min={1}
-                  value={dialog.upstream.max_tokens}
+                  value={connectionDialog.upstream.max_tokens}
                   onChange={(event) => updateDialogUpstream("max_tokens", Number(event.target.value))}
                 />
               </label>
@@ -565,14 +672,14 @@ export default function App() {
                   min={0}
                   max={2}
                   step={0.1}
-                  value={dialog.upstream.temperature}
+                  value={connectionDialog.upstream.temperature}
                   onChange={(event) => updateDialogUpstream("temperature", Number(event.target.value))}
                 />
               </label>
               <label className="check-row dialog-check">
                 <input
                   type="checkbox"
-                  checked={dialog.upstream.no_proxy}
+                  checked={connectionDialog.upstream.no_proxy}
                   onChange={(event) => updateDialogUpstream("no_proxy", event.target.checked)}
                 />
                 <span>直连，不使用代理</span>
@@ -580,14 +687,14 @@ export default function App() {
               <label className="span-2">
                 User-Agent
                 <input
-                  value={dialog.upstream.user_agent}
+                  value={connectionDialog.upstream.user_agent}
                   onChange={(event) => updateDialogUpstream("user_agent", event.target.value)}
                 />
               </label>
             </div>
 
             <footer className="modal-footer">
-              {dialog.mode === "edit" ? (
+              {connectionDialog.mode === "edit" ? (
                 <button className="secondary danger" onClick={deleteSelectedUpstream} disabled={busy === "save"}>
                   <Trash2 size={16} />
                   删除
@@ -596,12 +703,75 @@ export default function App() {
                 <span />
               )}
               <div className="footer-actions">
-                <button className="secondary" onClick={() => setDialog(null)}>
+                <button className="secondary" onClick={() => setConnectionDialog(null)}>
                   取消
                 </button>
-                <button onClick={saveDialog} disabled={busy === "save"}>
+                <button onClick={saveConnectionDialog} disabled={busy === "save"}>
                   {busy === "save" ? <Loader2 className="spin" size={16} /> : <Save size={16} />}
                   保存连接
+                </button>
+              </div>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+
+      {templateDialog ? (
+        <div className="modal-overlay" role="presentation">
+          <section className="modal template-modal" role="dialog" aria-modal="true" aria-labelledby="template-dialog-title">
+            <header className="modal-header">
+              <div>
+                <div className="status-pill">{templateDialog.mode === "new" ? "新建" : "编辑"}</div>
+                <h3 id="template-dialog-title">
+                  {templateDialog.mode === "new" ? "新建提示词模板" : "编辑提示词模板"}
+                </h3>
+              </div>
+              <button className="icon-button" onClick={() => setTemplateDialog(null)} title="关闭">
+                <X size={17} />
+              </button>
+            </header>
+
+            <div className="template-form">
+              <label>
+                模板名称
+                <input
+                  value={templateDialog.name}
+                  onChange={(event) =>
+                    setTemplateDialog((current) =>
+                      current ? { ...current, name: event.target.value } : current,
+                    )
+                  }
+                />
+              </label>
+              <label>
+                模板内容
+                <textarea
+                  value={templateDialog.content}
+                  onChange={(event) =>
+                    setTemplateDialog((current) =>
+                      current ? { ...current, content: event.target.value } : current,
+                    )
+                  }
+                />
+              </label>
+            </div>
+
+            <footer className="modal-footer">
+              {templateDialog.mode === "edit" ? (
+                <button className="secondary danger" onClick={deleteTemplate} disabled={busy === "save"}>
+                  <Trash2 size={16} />
+                  删除
+                </button>
+              ) : (
+                <span />
+              )}
+              <div className="footer-actions">
+                <button className="secondary" onClick={() => setTemplateDialog(null)}>
+                  取消
+                </button>
+                <button onClick={saveTemplateDialog} disabled={busy === "save"}>
+                  {busy === "save" ? <Loader2 className="spin" size={16} /> : <Save size={16} />}
+                  保存模板
                 </button>
               </div>
             </footer>

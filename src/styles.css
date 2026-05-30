@@ -400,6 +400,16 @@ textarea:focus {
   width: auto;
 }
 
+.template-tools {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.template-tools select {
+  min-width: 132px;
+}
+
 textarea {
   min-height: 0;
   resize: none;
@@ -538,6 +548,20 @@ pre {
 .footer-actions {
   display: flex;
   gap: 10px;
+}
+
+.template-modal {
+  width: min(680px, calc(100vw - 24px));
+}
+
+.template-form {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.template-form textarea {
+  min-height: 220px;
 }
 
 @keyframes spin {
