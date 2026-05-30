@@ -9,12 +9,14 @@ import {
   Gauge,
   KeyRound,
   Loader2,
+  Pencil,
   Plus,
   RefreshCw,
   Save,
   Send,
   Settings2,
   Trash2,
+  X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { ApiResult, AppConfig, CompletionPayload, Upstream, UpstreamType } from "./types";
@@ -26,6 +28,13 @@ const TYPE_LABELS: Record<UpstreamType, string> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
   newapi: "Gateway",
+};
+
+type ConnectionDialog = {
+  mode: "new" | "edit";
+  name: string;
+  originalName?: string;
+  upstream: Upstream;
 };
 
 const blankUpstream = (type: UpstreamType = "openai"): Upstream => ({
@@ -107,6 +116,7 @@ export default function App() {
   const [status, setStatus] = useState("就绪");
   const [busy, setBusy] = useState<"models" | "send" | "save" | null>(null);
   const [showKey, setShowKey] = useState(false);
+  const [dialog, setDialog] = useState<ConnectionDialog | null>(null);
 
   const upstreamNames = useMemo(() => Object.keys(config.upstreams), [config.upstreams]);
   const templates = useMemo(() => Object.entries(config.templates ?? {}), [config.templates]);
@@ -137,26 +147,71 @@ export default function App() {
     setStatus(`已选择 ${name}`);
   }
 
-  function updateDraft<K extends keyof Upstream>(key: K, value: Upstream[K]) {
-    setDraft((current) => {
-      const next = { ...current, [key]: value };
-      if (key === "type") {
-        next.chat_path = value === "anthropic" ? "/v1/messages" : "/v1/chat/completions";
-        next.send_temperature = value !== "anthropic";
-      }
-      return next;
+  function nextUpstreamName() {
+    let index = upstreamNames.length + 1;
+    let name = `upstream-${index}`;
+    while (config.upstreams[name]) {
+      index += 1;
+      name = `upstream-${index}`;
+    }
+    return name;
+  }
+
+  function openNewUpstream() {
+    setShowKey(false);
+    setDialog({ mode: "new", name: nextUpstreamName(), upstream: blankUpstream("openai") });
+  }
+
+  function openEditUpstream() {
+    setShowKey(false);
+    setDialog({
+      mode: "edit",
+      name: selected,
+      originalName: selected,
+      upstream: { ...draft, default_model: model || draft.default_model },
     });
   }
 
-  async function saveConfig() {
+  function updateDialogUpstream<K extends keyof Upstream>(key: K, value: Upstream[K]) {
+    setDialog((current) => {
+      if (!current) return current;
+      const upstream = { ...current.upstream, [key]: value };
+      if (key === "type") {
+        upstream.chat_path = value === "anthropic" ? "/v1/messages" : "/v1/chat/completions";
+        upstream.send_temperature = value !== "anthropic";
+      }
+      return { ...current, upstream };
+    });
+  }
+
+  async function saveDialog() {
+    if (!dialog) return;
+    const name = dialog.name.trim();
+    if (!name) {
+      setStatus("请输入上游名称");
+      return;
+    }
+    if (name !== dialog.originalName && config.upstreams[name]) {
+      setStatus(`上游 ${name} 已存在`);
+      return;
+    }
+
     setBusy("save");
     try {
       const next = cloneConfig(config);
-      next.default_upstream = selected;
-      next.upstreams[selected] = { ...draft, default_model: model || draft.default_model };
+      if (dialog.originalName && dialog.originalName !== name) {
+        delete next.upstreams[dialog.originalName];
+      }
+      next.upstreams[name] = dialog.upstream;
+      next.default_upstream = name;
       await invokeCommand("save_config", { config: next });
       setConfig(next);
-      setStatus("配置已保存");
+      setSelected(name);
+      setDraft(dialog.upstream);
+      setModel(dialog.upstream.default_model);
+      setModels([]);
+      setDialog(null);
+      setStatus("连接配置已保存");
     } catch (error) {
       setStatus(`保存失败：${asError(error)}`);
     } finally {
@@ -164,35 +219,31 @@ export default function App() {
     }
   }
 
-  function addUpstream() {
-    let index = upstreamNames.length + 1;
-    let name = `upstream-${index}`;
-    while (config.upstreams[name]) {
-      index += 1;
-      name = `upstream-${index}`;
-    }
-    const next = cloneConfig(config);
-    next.upstreams[name] = blankUpstream("openai");
-    next.default_upstream = name;
-    setConfig(next);
-    setSelected(name);
-    setDraft(next.upstreams[name]);
-    setModel(next.upstreams[name].default_model);
-    setStatus(`已新建 ${name}，保存后写入配置`);
-  }
-
-  function deleteUpstream() {
+  async function deleteSelectedUpstream() {
+    if (!dialog?.originalName) return;
     if (upstreamNames.length <= 1) {
       setStatus("至少保留一个上游配置");
       return;
     }
-    const next = cloneConfig(config);
-    delete next.upstreams[selected];
-    const name = Object.keys(next.upstreams)[0];
-    next.default_upstream = name;
-    setConfig(next);
-    selectUpstream(name);
-    setStatus("已删除当前上游，保存后写入配置");
+    setBusy("save");
+    try {
+      const next = cloneConfig(config);
+      delete next.upstreams[dialog.originalName];
+      const name = Object.keys(next.upstreams)[0];
+      next.default_upstream = name;
+      await invokeCommand("save_config", { config: next });
+      setConfig(next);
+      setSelected(name);
+      setDraft(next.upstreams[name]);
+      setModel(next.upstreams[name].default_model);
+      setModels([]);
+      setDialog(null);
+      setStatus("连接配置已删除");
+    } catch (error) {
+      setStatus(`删除失败：${asError(error)}`);
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function refreshModels() {
@@ -255,7 +306,7 @@ export default function App() {
         <section className="panel upstream-panel">
           <div className="panel-title">
             <span>上游</span>
-            <button className="icon-button" onClick={addUpstream} title="新建上游">
+            <button className="icon-button" onClick={openNewUpstream} title="新建上游">
               <Plus size={18} />
             </button>
           </div>
@@ -276,96 +327,39 @@ export default function App() {
           </div>
         </section>
 
-        <section className="panel form-panel">
+        <section className="panel connection-summary">
           <div className="panel-title">
-            <span>连接</span>
-            <Settings2 size={17} />
+            <span>当前连接</span>
+            <button className="icon-button" onClick={openEditUpstream} title="编辑连接">
+              <Pencil size={16} />
+            </button>
           </div>
-
-          <div className="segmented" aria-label="上游类型">
-            {(Object.keys(TYPE_LABELS) as UpstreamType[]).map((type) => (
-              <button
-                className={draft.type === type ? "segment active" : "segment"}
-                key={type}
-                onClick={() => updateDraft("type", type)}
-                type="button"
-              >
-                {TYPE_LABELS[type]}
-              </button>
-            ))}
-          </div>
-
-          <label>
-            Base URL
-            <input value={draft.base_url} onChange={(event) => updateDraft("base_url", event.target.value)} />
-          </label>
-          <label>
-            API Key
-            <div className="input-with-button">
-              <input
-                type={showKey ? "text" : "password"}
-                value={draft.api_key}
-                onChange={(event) => updateDraft("api_key", event.target.value)}
-              />
-              <button className="icon-button" onClick={() => setShowKey((value) => !value)} title="显示或隐藏密钥">
-                {showKey ? <EyeOff size={17} /> : <Eye size={17} />}
-              </button>
+          <dl className="summary-list">
+            <div>
+              <dt>类型</dt>
+              <dd>{TYPE_LABELS[draft.type]}</dd>
             </div>
-          </label>
-          <div className="split-fields">
-            <label>
-              模型路径
-              <input value={draft.models_path} onChange={(event) => updateDraft("models_path", event.target.value)} />
-            </label>
-            <label>
-              聊天路径
-              <input value={draft.chat_path} onChange={(event) => updateDraft("chat_path", event.target.value)} />
-            </label>
-          </div>
-          <label>
-            User-Agent
-            <input value={draft.user_agent} onChange={(event) => updateDraft("user_agent", event.target.value)} />
-          </label>
-          <div className="split-fields">
-            <label>
-              Max Tokens
-              <input
-                type="number"
-                min={1}
-                value={draft.max_tokens}
-                onChange={(event) => updateDraft("max_tokens", Number(event.target.value))}
-              />
-            </label>
-            <label>
-              Temperature
-              <input
-                type="number"
-                min={0}
-                max={2}
-                step={0.1}
-                value={draft.temperature}
-                onChange={(event) => updateDraft("temperature", Number(event.target.value))}
-              />
-            </label>
-          </div>
-          <label className="check-row">
-            <input
-              type="checkbox"
-              checked={draft.no_proxy}
-              onChange={(event) => updateDraft("no_proxy", event.target.checked)}
-            />
-            <span>直连，不使用代理</span>
-          </label>
-          <div className="action-row">
-            <button className="secondary danger" onClick={deleteUpstream} title="删除当前上游">
-              <Trash2 size={16} />
-              删除
-            </button>
-            <button onClick={saveConfig} disabled={busy === "save"}>
-              {busy === "save" ? <Loader2 className="spin" size={16} /> : <Save size={16} />}
-              保存
-            </button>
-          </div>
+            <div>
+              <dt>Base URL</dt>
+              <dd>{draft.base_url || "-"}</dd>
+            </div>
+            <div>
+              <dt>模型路径</dt>
+              <dd>{draft.models_path}</dd>
+            </div>
+            <div>
+              <dt>聊天路径</dt>
+              <dd>{draft.chat_path}</dd>
+            </div>
+            <div>
+              <dt>代理</dt>
+              <dd>{draft.no_proxy ? "直连" : "系统代理"}</dd>
+            </div>
+          </dl>
+          <button className="secondary wide-action" onClick={openEditUpstream}>
+            <Settings2 size={16} />
+            编辑连接
+          </button>
         </section>
       </aside>
 
@@ -469,6 +463,144 @@ export default function App() {
           </section>
         </div>
       </section>
+
+      {dialog ? (
+        <div className="modal-overlay" role="presentation">
+          <section className="modal" role="dialog" aria-modal="true" aria-labelledby="connection-dialog-title">
+            <header className="modal-header">
+              <div>
+                <div className="status-pill">{dialog.mode === "new" ? "新建" : "编辑"}</div>
+                <h3 id="connection-dialog-title">{dialog.mode === "new" ? "新建上游连接" : "编辑上游连接"}</h3>
+              </div>
+              <button className="icon-button" onClick={() => setDialog(null)} title="关闭">
+                <X size={17} />
+              </button>
+            </header>
+
+            <div className="connection-form">
+              <label>
+                上游名称
+                <input
+                  value={dialog.name}
+                  onChange={(event) => setDialog((current) => (current ? { ...current, name: event.target.value } : current))}
+                />
+              </label>
+
+              <div className="segmented dialog-segmented" aria-label="上游类型">
+                {(Object.keys(TYPE_LABELS) as UpstreamType[]).map((type) => (
+                  <button
+                    className={dialog.upstream.type === type ? "segment active" : "segment"}
+                    key={type}
+                    onClick={() => updateDialogUpstream("type", type)}
+                    type="button"
+                  >
+                    {TYPE_LABELS[type]}
+                  </button>
+                ))}
+              </div>
+
+              <label className="span-2">
+                Base URL
+                <input
+                  value={dialog.upstream.base_url}
+                  onChange={(event) => updateDialogUpstream("base_url", event.target.value)}
+                />
+              </label>
+
+              <label className="span-2">
+                API Key
+                <div className="input-with-button">
+                  <input
+                    type={showKey ? "text" : "password"}
+                    value={dialog.upstream.api_key}
+                    onChange={(event) => updateDialogUpstream("api_key", event.target.value)}
+                  />
+                  <button className="icon-button" onClick={() => setShowKey((value) => !value)} title="显示或隐藏密钥">
+                    {showKey ? <EyeOff size={17} /> : <Eye size={17} />}
+                  </button>
+                </div>
+              </label>
+
+              <label>
+                模型路径
+                <input
+                  value={dialog.upstream.models_path}
+                  onChange={(event) => updateDialogUpstream("models_path", event.target.value)}
+                />
+              </label>
+              <label>
+                聊天路径
+                <input
+                  value={dialog.upstream.chat_path}
+                  onChange={(event) => updateDialogUpstream("chat_path", event.target.value)}
+                />
+              </label>
+              <label>
+                默认模型
+                <input
+                  value={dialog.upstream.default_model}
+                  onChange={(event) => updateDialogUpstream("default_model", event.target.value)}
+                />
+              </label>
+              <label>
+                Max Tokens
+                <input
+                  type="number"
+                  min={1}
+                  value={dialog.upstream.max_tokens}
+                  onChange={(event) => updateDialogUpstream("max_tokens", Number(event.target.value))}
+                />
+              </label>
+              <label>
+                Temperature
+                <input
+                  type="number"
+                  min={0}
+                  max={2}
+                  step={0.1}
+                  value={dialog.upstream.temperature}
+                  onChange={(event) => updateDialogUpstream("temperature", Number(event.target.value))}
+                />
+              </label>
+              <label className="check-row dialog-check">
+                <input
+                  type="checkbox"
+                  checked={dialog.upstream.no_proxy}
+                  onChange={(event) => updateDialogUpstream("no_proxy", event.target.checked)}
+                />
+                <span>直连，不使用代理</span>
+              </label>
+              <label className="span-2">
+                User-Agent
+                <input
+                  value={dialog.upstream.user_agent}
+                  onChange={(event) => updateDialogUpstream("user_agent", event.target.value)}
+                />
+              </label>
+            </div>
+
+            <footer className="modal-footer">
+              {dialog.mode === "edit" ? (
+                <button className="secondary danger" onClick={deleteSelectedUpstream} disabled={busy === "save"}>
+                  <Trash2 size={16} />
+                  删除
+                </button>
+              ) : (
+                <span />
+              )}
+              <div className="footer-actions">
+                <button className="secondary" onClick={() => setDialog(null)}>
+                  取消
+                </button>
+                <button onClick={saveDialog} disabled={busy === "save"}>
+                  {busy === "save" ? <Loader2 className="spin" size={16} /> : <Save size={16} />}
+                  保存连接
+                </button>
+              </div>
+            </footer>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }
