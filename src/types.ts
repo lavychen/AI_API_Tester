@@ -22,6 +22,7 @@ export interface AppConfig {
 }
 
 export interface CompletionPayload {
+  request_id: string;
   upstream_name: string;
   upstream: Upstream;
   model: string;

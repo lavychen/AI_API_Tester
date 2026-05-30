@@ -1,4 +1,5 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   Bot,
   Check,
@@ -53,6 +54,11 @@ type TemplateDialog = {
   name: string;
   originalName?: string;
   content: string;
+};
+
+type StreamChunk = {
+  request_id: string;
+  text: string;
 };
 
 const blankUpstream = (type: UpstreamType = "openai"): Upstream => ({
@@ -366,7 +372,14 @@ export default function App() {
     setOutput("");
     setDiagnostics("");
     setStatus("请求中...");
+    const requestId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    let receivedStreamChunk = false;
+    let unlisten: (() => void) | undefined;
     const payload: CompletionPayload = {
+      request_id: requestId,
       upstream_name: selected,
       upstream: { ...draft, default_model: model || draft.default_model },
       model: model || draft.default_model,
@@ -374,14 +387,24 @@ export default function App() {
       prompt,
     };
     try {
+      if (draft.stream && window.__TAURI_INTERNALS__) {
+        unlisten = await listen<StreamChunk>("completion-stream-chunk", (event) => {
+          if (event.payload.request_id !== requestId) return;
+          receivedStreamChunk = true;
+          setOutput((current) => current + event.payload.text);
+        });
+      }
       const result = await invokeCommand<ApiResult>("complete", { payload });
-      setOutput(result.text);
+      if (!receivedStreamChunk) {
+        setOutput(result.text);
+      }
       setDiagnostics(formatMeta(result.meta, result.elapsed));
       setStatus("完成");
     } catch (error) {
       setStatus("请求失败");
       setDiagnostics(asError(error));
     } finally {
+      unlisten?.();
       setBusy(null);
     }
   }

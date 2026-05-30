@@ -1,9 +1,11 @@
+use futures_util::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Instant;
+use tauri::{Emitter, Window};
 
 const API_VERSION: &str = "2023-06-01";
 const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -38,6 +40,7 @@ struct AppConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 struct CompletionPayload {
+    request_id: String,
     upstream_name: String,
     upstream: Upstream,
     model: String,
@@ -50,6 +53,12 @@ struct ApiResult {
     text: String,
     meta: Value,
     elapsed: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct StreamChunk {
+    request_id: String,
+    text: String,
 }
 
 fn default_user_agent() -> String {
@@ -87,7 +96,11 @@ fn example_config_path() -> Result<PathBuf, String> {
 }
 
 fn join_url(base: &str, path: &str) -> String {
-    format!("{}/{}", base.trim().trim_end_matches('/'), path.trim().trim_start_matches('/'))
+    format!(
+        "{}/{}",
+        base.trim().trim_end_matches('/'),
+        path.trim().trim_start_matches('/')
+    )
 }
 
 fn request_headers(upstream: &Upstream) -> Result<HeaderMap, String> {
@@ -122,7 +135,11 @@ fn request_headers(upstream: &Upstream) -> Result<HeaderMap, String> {
 
 fn http_client(upstream: &Upstream) -> Result<reqwest::Client, String> {
     let builder = reqwest::Client::builder();
-    let builder = if upstream.no_proxy { builder.no_proxy() } else { builder };
+    let builder = if upstream.no_proxy {
+        builder.no_proxy()
+    } else {
+        builder
+    };
     builder.build().map_err(|error| error.to_string())
 }
 
@@ -209,98 +226,178 @@ fn stream_meta(model: Option<String>, usage: Option<Value>, stop_reason: Option<
     })
 }
 
-fn parse_stream_response(text: &str, upstream: &Upstream) -> (String, Value) {
-    let mut output = String::new();
-    let mut model = None;
-    let mut usage = None;
-    let mut stop_reason = None;
+#[derive(Default)]
+struct StreamState {
+    output: String,
+    model: Option<String>,
+    usage: Option<Value>,
+    stop_reason: Option<String>,
+}
 
-    for line in text.lines() {
-        let line = line.trim();
-        if !line.starts_with("data:") {
-            continue;
-        }
-        let data = line.trim_start_matches("data:").trim();
-        if data.is_empty() || data == "[DONE]" {
-            continue;
-        }
-        let Ok(value) = serde_json::from_str::<Value>(data) else {
-            continue;
-        };
-        if model.is_none() {
-            model = value
-                .get("model")
-                .and_then(Value::as_str)
-                .map(ToString::to_string);
-        }
-        if let Some(item_usage) = value.get("usage") {
-            if !item_usage.is_null() {
-                usage = Some(item_usage.clone());
+impl StreamState {
+    fn meta(&self) -> Value {
+        stream_meta(
+            self.model.clone(),
+            self.usage.clone(),
+            self.stop_reason.clone(),
+        )
+    }
+
+    fn push_frame(&mut self, frame: &str, upstream: &Upstream) -> String {
+        let mut chunk = String::new();
+        for line in frame.lines() {
+            let line = line.trim();
+            if !line.starts_with("data:") {
+                continue;
             }
-        }
+            let data = line.trim_start_matches("data:").trim();
+            if data.is_empty() || data == "[DONE]" {
+                continue;
+            }
+            let Ok(value) = serde_json::from_str::<Value>(data) else {
+                continue;
+            };
+            if self.model.is_none() {
+                self.model = value
+                    .get("model")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string);
+            }
+            if let Some(item_usage) = value.get("usage") {
+                if !item_usage.is_null() {
+                    self.usage = Some(item_usage.clone());
+                }
+            }
 
-        if upstream.upstream_type == "anthropic" || upstream.chat_path == "/v1/messages" {
-            match value.get("type").and_then(Value::as_str) {
-                Some("message_start") => {
-                    if let Some(message) = value.get("message") {
-                        model = model.or_else(|| {
-                            message
-                                .get("model")
-                                .and_then(Value::as_str)
-                                .map(ToString::to_string)
-                        });
-                        if let Some(item_usage) = message.get("usage") {
-                            usage = Some(item_usage.clone());
+            if upstream.upstream_type == "anthropic" || upstream.chat_path == "/v1/messages" {
+                match value.get("type").and_then(Value::as_str) {
+                    Some("message_start") => {
+                        if let Some(message) = value.get("message") {
+                            if self.model.is_none() {
+                                self.model = message
+                                    .get("model")
+                                    .and_then(Value::as_str)
+                                    .map(ToString::to_string);
+                            }
+                            if let Some(item_usage) = message.get("usage") {
+                                self.usage = Some(item_usage.clone());
+                            }
                         }
                     }
-                }
-                Some("content_block_delta") => {
-                    if let Some(text) = value
-                        .get("delta")
-                        .and_then(|delta| delta.get("text"))
-                        .and_then(Value::as_str)
-                    {
-                        output.push_str(text);
-                    }
-                }
-                Some("message_delta") => {
-                    if let Some(delta) = value.get("delta") {
-                        stop_reason = delta
-                            .get("stop_reason")
+                    Some("content_block_delta") => {
+                        if let Some(text) = value
+                            .get("delta")
+                            .and_then(|delta| delta.get("text"))
                             .and_then(Value::as_str)
-                            .map(ToString::to_string)
-                            .or(stop_reason);
+                        {
+                            chunk.push_str(text);
+                        }
                     }
-                    if let Some(item_usage) = value.get("usage") {
-                        usage = Some(item_usage.clone());
+                    Some("message_delta") => {
+                        if let Some(delta) = value.get("delta") {
+                            self.stop_reason = delta
+                                .get("stop_reason")
+                                .and_then(Value::as_str)
+                                .map(ToString::to_string)
+                                .or_else(|| self.stop_reason.clone());
+                        }
+                        if let Some(item_usage) = value.get("usage") {
+                            self.usage = Some(item_usage.clone());
+                        }
                     }
+                    _ => {}
                 }
-                _ => {}
+                continue;
             }
-            continue;
-        }
 
-        if let Some(choice) = value
-            .get("choices")
-            .and_then(Value::as_array)
-            .and_then(|choices| choices.first())
-        {
-            if let Some(content) = choice
-                .get("delta")
-                .and_then(|delta| delta.get("content"))
-                .and_then(Value::as_str)
+            if let Some(choice) = value
+                .get("choices")
+                .and_then(Value::as_array)
+                .and_then(|choices| choices.first())
             {
-                output.push_str(content);
+                if let Some(content) = choice
+                    .get("delta")
+                    .and_then(|delta| delta.get("content"))
+                    .and_then(Value::as_str)
+                {
+                    chunk.push_str(content);
+                }
+                self.stop_reason = choice
+                    .get("finish_reason")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string)
+                    .or_else(|| self.stop_reason.clone());
             }
-            stop_reason = choice
-                .get("finish_reason")
-                .and_then(Value::as_str)
-                .map(ToString::to_string)
-                .or(stop_reason);
+        }
+        self.output.push_str(&chunk);
+        chunk
+    }
+}
+
+fn find_sse_delimiter(buffer: &[u8]) -> Option<(usize, usize)> {
+    for (index, window) in buffer.windows(4).enumerate() {
+        if window == b"\r\n\r\n" {
+            return Some((index, 4));
+        }
+    }
+    for (index, window) in buffer.windows(2).enumerate() {
+        if window == b"\n\n" {
+            return Some((index, 2));
+        }
+    }
+    None
+}
+
+async fn read_stream_response(
+    window: Window,
+    response: reqwest::Response,
+    payload: &CompletionPayload,
+) -> Result<(String, Value), String> {
+    let mut stream = response.bytes_stream();
+    let mut buffer = Vec::new();
+    let mut state = StreamState::default();
+
+    while let Some(item) = stream.next().await {
+        let bytes = item.map_err(|error| error.to_string())?;
+        buffer.extend_from_slice(&bytes);
+
+        while let Some((index, delimiter_len)) = find_sse_delimiter(&buffer) {
+            let frame = buffer.drain(..index + delimiter_len).collect::<Vec<_>>();
+            let frame_text =
+                std::str::from_utf8(&frame[..index]).map_err(|error| error.to_string())?;
+            let chunk = state.push_frame(frame_text, &payload.upstream);
+            if !chunk.is_empty() {
+                window
+                    .emit(
+                        "completion-stream-chunk",
+                        StreamChunk {
+                            request_id: payload.request_id.clone(),
+                            text: chunk,
+                        },
+                    )
+                    .map_err(|error| error.to_string())?;
+            }
         }
     }
 
-    (output, stream_meta(model, usage, stop_reason))
+    if !buffer.is_empty() {
+        let frame_text = std::str::from_utf8(&buffer).map_err(|error| error.to_string())?;
+        let chunk = state.push_frame(frame_text, &payload.upstream);
+        if !chunk.is_empty() {
+            window
+                .emit(
+                    "completion-stream-chunk",
+                    StreamChunk {
+                        request_id: payload.request_id.clone(),
+                        text: chunk,
+                    },
+                )
+                .map_err(|error| error.to_string())?;
+        }
+    }
+
+    let meta = state.meta();
+    Ok((state.output, meta))
 }
 
 fn completion_body(payload: &CompletionPayload) -> Value {
@@ -375,7 +472,7 @@ async fn fetch_models(upstream: Upstream) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-async fn complete(payload: CompletionPayload) -> Result<ApiResult, String> {
+async fn complete(window: Window, payload: CompletionPayload) -> Result<ApiResult, String> {
     let started = Instant::now();
     let upstream = &payload.upstream;
     let response = http_client(upstream)?
@@ -386,18 +483,19 @@ async fn complete(payload: CompletionPayload) -> Result<ApiResult, String> {
         .await
         .map_err(|error| format!("{} 请求失败：{}", payload.upstream_name, error))?;
     let status = response.status();
-    let text = response.text().await.map_err(|error| error.to_string())?;
     if !status.is_success() {
+        let text = response.text().await.map_err(|error| error.to_string())?;
         return Err(format!("HTTP {}: {}", status.as_u16(), text));
     }
     if upstream.stream {
-        let (stream_text, meta) = parse_stream_response(&text, upstream);
+        let (stream_text, meta) = read_stream_response(window, response, &payload).await?;
         return Ok(ApiResult {
             text: stream_text,
             meta,
             elapsed: started.elapsed().as_secs_f64(),
         });
     }
+    let text = response.text().await.map_err(|error| error.to_string())?;
     let value = serde_json::from_str::<Value>(&text).map_err(|error| error.to_string())?;
     Ok(ApiResult {
         text: extract_text(&value),
