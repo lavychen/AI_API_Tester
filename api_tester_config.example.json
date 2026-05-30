@@ -1,0 +1,51 @@
+{
+  "default_upstream": "demo-anthropic",
+  "upstreams": {
+    "demo-anthropic": {
+      "type": "anthropic",
+      "base_url": "https://api.anthropic.com",
+      "api_key": "",
+      "models_path": "/v1/models",
+      "chat_path": "/v1/messages",
+      "default_model": "claude-opus-4-7",
+      "max_tokens": 4096,
+      "temperature": 0.7,
+      "stream": true,
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "no_proxy": false
+    },
+    "demo-openai": {
+      "type": "openai",
+      "base_url": "https://api.openai.com",
+      "api_key": "",
+      "models_path": "/v1/models",
+      "chat_path": "/v1/chat/completions",
+      "default_model": "gpt-4.1",
+      "max_tokens": 4096,
+      "temperature": 0.7,
+      "stream": true,
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "no_proxy": false
+    },
+    "demo-newapi": {
+      "type": "newapi",
+      "base_url": "https://example.com",
+      "api_key": "",
+      "models_path": "/v1/models",
+      "chat_path": "/v1/chat/completions",
+      "default_model": "",
+      "max_tokens": 4096,
+      "temperature": 0.7,
+      "stream": true,
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "no_proxy": false
+    }
+  },
+  "templates": {
+    "smoke": "Reply with: API test OK",
+    "logic": "请分步骤推导一个逻辑题，并在最终答案前检查隐含假设。",
+    "json": "请只返回 JSON，不要包含 Markdown。",
+    "code": "请写一个 Python 函数，并给出简短测试。",
+    "long": "请写一篇结构清晰的中文长文。"
+  }
+}
